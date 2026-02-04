@@ -1,4 +1,4 @@
-package com.flowpay.atendimento_service;
+package com.flowpay.atendimento;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

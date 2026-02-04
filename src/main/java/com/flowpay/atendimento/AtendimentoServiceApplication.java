@@ -1,4 +1,4 @@
-package com.flowpay.atendimento_service;
+package com.flowpay.atendimento;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
