@@ -3,8 +3,10 @@ package com.flowpay.atendimento.service.impl.redis;
 import com.flowpay.atendimento.model.Atendente;
 import com.flowpay.atendimento.model.Time;
 import com.flowpay.atendimento.service.AtendenteService;
-import lombok.RequiredArgsConstructor;
+import com.flowpay.atendimento.service.DistribuidorService;
+import com.flowpay.atendimento.service.NotificacaoService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -14,11 +16,21 @@ import java.util.stream.Collectors;
 
 @Service
 @Profile("redis")
-@RequiredArgsConstructor
 @Slf4j
 public class RedisAtendenteService implements AtendenteService {
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final NotificacaoService notificacaoService;
+    private final DistribuidorService distribuidorService;
+
+    public RedisAtendenteService(
+            RedisTemplate<String, Object> redisTemplate,
+            @Lazy NotificacaoService notificacaoService,
+            @Lazy DistribuidorService distribuidorService) {
+        this.redisTemplate = redisTemplate;
+        this.notificacaoService = notificacaoService;
+        this.distribuidorService = distribuidorService;
+    }
 
     private static final String ATENDENTE_PREFIX = "atendente:";
     private static final String ATENDENTES_IDS_KEY = "atendentes:ids";
@@ -58,6 +70,11 @@ public class RedisAtendenteService implements AtendenteService {
         log.info("Atendente cadastrado no Redis: ID={}, Nome={}, Time={}",
                 atendente.getId(), atendente.getNome(), atendente.getTime());
 
+        notificacaoService.notificarNovoAtendente(atendente);
+
+        // Processa fila do time para distribuir atendimentos pendentes
+        distribuidorService.processarFila(atendente.getTime());
+
         return atendente;
     }
 
@@ -65,6 +82,7 @@ public class RedisAtendenteService implements AtendenteService {
     public List<Atendente> buscarDisponiveisPorTime(Time time) {
         return listarPorTime(time).stream()
                 .filter(Atendente::isDisponivel)
+                .sorted(Comparator.comparingInt(Atendente::getAtendimentosAtivos))
                 .collect(Collectors.toList());
     }
 

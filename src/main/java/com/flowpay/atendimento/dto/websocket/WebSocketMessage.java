@@ -26,6 +26,7 @@ public class WebSocketMessage {
         ATENDIMENTO_FINALIZADO,
         FILA_ATUALIZADA,
         METRICAS_ATUALIZADAS,
-        ATENDENTE_STATUS_ALTERADO
+        ATENDENTE_STATUS_ALTERADO,
+        NOVO_ATENDENTE
     }
 }

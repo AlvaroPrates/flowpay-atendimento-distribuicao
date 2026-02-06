@@ -67,7 +67,74 @@ public class RedisAtendimentoService implements AtendimentoService {
             return Optional.empty();
         }
 
-        return Optional.of((Atendimento) obj);
+        // Se já é um Atendimento, retorna diretamente
+        if (obj instanceof Atendimento) {
+            return Optional.of((Atendimento) obj);
+        }
+
+        // Se é um LinkedHashMap (deserialização do Redis), converte manualmente
+        if (obj instanceof Map) {
+            try {
+                Map<String, Object> map = (Map<String, Object>) obj;
+                Atendimento atendimento = Atendimento.builder()
+                        .id(getLongFromMap(map, "id"))
+                        .nomeCliente((String) map.get("nomeCliente"))
+                        .assunto((String) map.get("assunto"))
+                        .time(Time.valueOf((String) map.get("time")))
+                        .status(StatusAtendimento.valueOf((String) map.get("status")))
+                        .atendenteId(getLongFromMap(map, "atendenteId"))
+                        .dataHoraCriacao(parseLocalDateTime(map.get("dataHoraCriacao")))
+                        .dataHoraAtendimento(parseLocalDateTime(map.get("dataHoraAtendimento")))
+                        .dataHoraFinalizacao(parseLocalDateTime(map.get("dataHoraFinalizacao")))
+                        .build();
+                return Optional.of(atendimento);
+            } catch (Exception e) {
+                log.error("Erro ao converter Map para Atendimento: {}", e.getMessage());
+                return Optional.empty();
+            }
+        }
+
+        log.warn("Objeto do Redis não é Atendimento nem Map: {}", obj.getClass());
+        return Optional.empty();
+    }
+
+    private Long getLongFromMap(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        return null;
+    }
+
+    private LocalDateTime parseLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDateTime) {
+            return (LocalDateTime) value;
+        }
+        if (value instanceof String) {
+            return LocalDateTime.parse((String) value);
+        }
+        if (value instanceof List) {
+            // Redis pode serializar LocalDateTime como array [year, month, day, hour, minute, second, nano]
+            List<?> list = (List<?>) value;
+            if (list.size() >= 7) {
+                return LocalDateTime.of(
+                        ((Number) list.get(0)).intValue(),
+                        ((Number) list.get(1)).intValue(),
+                        ((Number) list.get(2)).intValue(),
+                        ((Number) list.get(3)).intValue(),
+                        ((Number) list.get(4)).intValue(),
+                        ((Number) list.get(5)).intValue(),
+                        ((Number) list.get(6)).intValue()
+                );
+            }
+        }
+        return null;
     }
 
     @Override

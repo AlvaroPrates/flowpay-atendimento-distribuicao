@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Implementação do serviço de distribuição de atendimentos.
@@ -62,6 +63,14 @@ public class DistribuidorServiceImpl implements DistribuidorService {
 
         // Busca atendentes disponíveis do time
         List<Atendente> disponiveis = atendenteService.buscarDisponiveisPorTime(atendimento.getTime());
+
+        // Log de debug para visualizar balanceamento
+        if (!disponiveis.isEmpty()) {
+            log.debug("Atendentes disponíveis (ordenados por carga): {}",
+                disponiveis.stream()
+                    .map(a -> String.format("%s(%d/3)", a.getNome(), a.getAtendimentosAtivos()))
+                    .collect(Collectors.joining(", ")));
+        }
 
         if (disponiveis.isEmpty()) {
             // Nenhum atendente disponível -> enfileira
@@ -118,6 +127,9 @@ public class DistribuidorServiceImpl implements DistribuidorService {
         // Atualiza status do atendimento
         atendimento.setStatus(StatusAtendimento.FINALIZADO);
         atendimento.setDataHoraFinalizacao(LocalDateTime.now());
+
+        // Persiste mudança no Redis (se ativo)
+        persistirAtendimentoSeRedis(atendimento);
 
         log.info("✅ Atendimento finalizado com sucesso");
         log.info("═══════════════════════════════════════");
@@ -186,11 +198,12 @@ public class DistribuidorServiceImpl implements DistribuidorService {
 
         // Persiste mudança no Redis (se ativo)
         persistirAtendenteSeRedis(atendente);
+        persistirAtendimentoSeRedis(atendimento);
 
         // Armazena em memória como ativo
         atendimentosAtivos.put(atendimento.getId(), atendimento);
 
-        log.info("👤 Atendimento {} atribuído para {} (Time: {}). Carga atual: {}/3",
+        log.info("👤 Atendimento {} atribuído para {} (Time: {}). Carga: {}/3 (Least Connection)",
                 atendimento.getId(),
                 atendente.getNome(),
                 atendente.getTime(),
@@ -229,6 +242,20 @@ public class DistribuidorServiceImpl implements DistribuidorService {
                     atendente.getAtendimentosAtivos());
             log.debug("Atendente {} atualizado no Redis: {}/3 atendimentos",
                     atendente.getId(), atendente.getAtendimentosAtivos());
+        }
+    }
+
+    /**
+     * Persiste mudanças do atendimento no Redis (se profile redis ativo).
+     * Quando usando Redis, as mudanças no objeto Atendimento em memória
+     * precisam ser sincronizadas com o Redis.
+     */
+    private void persistirAtendimentoSeRedis(Atendimento atendimento) {
+        if (redisTemplate != null) {
+            String key = "atendimento:" + atendimento.getId();
+            redisTemplate.opsForValue().set(key, atendimento);
+            log.debug("Atendimento {} atualizado no Redis: status={}",
+                    atendimento.getId(), atendimento.getStatus());
         }
     }
 }

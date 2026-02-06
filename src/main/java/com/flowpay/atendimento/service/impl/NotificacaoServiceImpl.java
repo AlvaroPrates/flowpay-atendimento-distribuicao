@@ -120,6 +120,33 @@ public class NotificacaoServiceImpl implements NotificacaoService {
         notificarMetricasAtualizadas();
     }
 
+    @Override
+    public void notificarNovoAtendente(Atendente atendente) {
+        log.info("[NOTIFICAÇÃO WS] Novo atendente cadastrado: ID={}, Nome={}, Time={}",
+                atendente.getId(),
+                atendente.getNome(),
+                atendente.getTime());
+
+        NovoAtendenteMessage dados = NovoAtendenteMessage.builder()
+                .atendenteId(atendente.getId())
+                .nome(atendente.getNome())
+                .time(atendente.getTime())
+                .atendimentosAtivos(atendente.getAtendimentosAtivos())
+                .build();
+
+        WebSocketMessage mensagem = WebSocketMessage.builder()
+                .tipo(WebSocketMessage.TipoMensagem.NOVO_ATENDENTE)
+                .timestamp(LocalDateTime.now())
+                .dados(dados)
+                .mensagem("Novo atendente cadastrado no time " + atendente.getTime())
+                .build();
+
+        messagingTemplate.convertAndSend("/topic/atendentes/" + atendente.getTime().name(), mensagem);
+        messagingTemplate.convertAndSend("/topic/atendentes", mensagem);
+
+        notificarMetricasAtualizadas();
+    }
+
     private void notificarMetricasAtualizadas() {
         int totalAtivos = atendimentoService.listarPorStatus(StatusAtendimento.EM_ATENDIMENTO)
                 .size();

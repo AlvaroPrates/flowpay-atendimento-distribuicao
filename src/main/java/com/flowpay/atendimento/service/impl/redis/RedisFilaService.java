@@ -1,6 +1,7 @@
 package com.flowpay.atendimento.service.impl.redis;
 
 import com.flowpay.atendimento.model.Atendimento;
+import com.flowpay.atendimento.model.StatusAtendimento;
 import com.flowpay.atendimento.model.Time;
 import com.flowpay.atendimento.service.FilaService;
 import lombok.RequiredArgsConstructor;
@@ -9,8 +10,10 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Profile("redis")
@@ -46,9 +49,14 @@ public class RedisFilaService implements FilaService {
         Object obj = redisTemplate.opsForList().leftPop(key);
 
         if (obj != null) {
-            Atendimento atendimento = (Atendimento) obj;
-            log.info("Desenfileirado do Redis: key={}, atendimentoId={}", key, atendimento.getId());
-            return atendimento;
+            Atendimento atendimento = convertToAtendimento(obj);
+            if (atendimento != null) {
+                log.info("Desenfileirado do Redis: key={}, atendimentoId={}", key, atendimento.getId());
+                return atendimento;
+            } else {
+                log.error("Erro ao converter objeto da fila Redis para Atendimento");
+                return null;
+            }
         }
 
         log.debug("Fila Redis '{}' está vazia", key);
@@ -66,7 +74,12 @@ public class RedisFilaService implements FilaService {
 
         List<Atendimento> atendimentos = new ArrayList<>();
         for (Object obj : objects) {
-            atendimentos.add((Atendimento) obj);
+            Atendimento atendimento = convertToAtendimento(obj);
+            if (atendimento != null) {
+                atendimentos.add(atendimento);
+            } else {
+                log.warn("Objeto inválido na fila do Redis foi ignorado");
+            }
         }
 
         return atendimentos;
@@ -85,5 +98,84 @@ public class RedisFilaService implements FilaService {
         Long tamanho = redisTemplate.opsForList().size(key);
         redisTemplate.delete(key);
         log.info("Fila Redis '{}' limpa. Removidos {} atendimentos", key, tamanho);
+    }
+
+    /**
+     * Converte objeto do Redis para Atendimento.
+     * Lida com deserialização tanto de objetos Atendimento diretos quanto LinkedHashMap.
+     */
+    private Atendimento convertToAtendimento(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+
+        // Se já é um Atendimento, retorna diretamente
+        if (obj instanceof Atendimento) {
+            return (Atendimento) obj;
+        }
+
+        // Se é um LinkedHashMap (deserialização do Redis), converte manualmente
+        if (obj instanceof Map) {
+            try {
+                Map<String, Object> map = (Map<String, Object>) obj;
+                Atendimento atendimento = Atendimento.builder()
+                        .id(getLongFromMap(map, "id"))
+                        .nomeCliente((String) map.get("nomeCliente"))
+                        .assunto((String) map.get("assunto"))
+                        .time(Time.valueOf((String) map.get("time")))
+                        .status(StatusAtendimento.valueOf((String) map.get("status")))
+                        .atendenteId(getLongFromMap(map, "atendenteId"))
+                        .dataHoraCriacao(parseLocalDateTime(map.get("dataHoraCriacao")))
+                        .dataHoraAtendimento(parseLocalDateTime(map.get("dataHoraAtendimento")))
+                        .dataHoraFinalizacao(parseLocalDateTime(map.get("dataHoraFinalizacao")))
+                        .build();
+                return atendimento;
+            } catch (Exception e) {
+                log.error("Erro ao converter Map para Atendimento: {}", e.getMessage());
+                return null;
+            }
+        }
+
+        log.warn("Objeto do Redis não é Atendimento nem Map: {}", obj.getClass());
+        return null;
+    }
+
+    private Long getLongFromMap(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        return null;
+    }
+
+    private LocalDateTime parseLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDateTime) {
+            return (LocalDateTime) value;
+        }
+        if (value instanceof String) {
+            return LocalDateTime.parse((String) value);
+        }
+        if (value instanceof List) {
+            // Redis pode serializar LocalDateTime como array [year, month, day, hour, minute, second, nano]
+            List<?> list = (List<?>) value;
+            if (list.size() >= 7) {
+                return LocalDateTime.of(
+                        ((Number) list.get(0)).intValue(),
+                        ((Number) list.get(1)).intValue(),
+                        ((Number) list.get(2)).intValue(),
+                        ((Number) list.get(3)).intValue(),
+                        ((Number) list.get(4)).intValue(),
+                        ((Number) list.get(5)).intValue(),
+                        ((Number) list.get(6)).intValue()
+                );
+            }
+        }
+        return null;
     }
 }
