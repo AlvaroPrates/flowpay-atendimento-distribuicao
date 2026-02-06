@@ -237,35 +237,6 @@ curl http://localhost:8080/actuator/health
 mvn test
 ```
 
-### Executar com Cobertura
-
-```bash
-mvn clean test jacoco:report
-```
-
-Relatório disponível em: `target/site/jacoco/index.html`
-
-## Build
-
-### Gerar JAR
-
-```bash
-mvn clean package
-```
-
-### Executar JAR
-
-```bash
-java -jar target/atendimento-service-0.0.1-SNAPSHOT.jar
-```
-
-### Build com Docker
-
-```bash
-docker build -t flowpay/atendimento-service .
-docker run -p 8080:8080 flowpay/atendimento-service
-```
-
 ## Configurações
 
 ### Principais Configurações (application.properties)
